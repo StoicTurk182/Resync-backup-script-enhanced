@@ -1,6 +1,46 @@
 #!/bin/bash
 # Streamlined Backup Script v3.0 - No manifest, better progress
 # Exit on error
+
+
+
+# Function to send email report
+send_email_report() {
+    local email_address="$1"
+    local log_file="$2"
+    local backup_file="$3"
+    local exit_code="$4"
+    
+    if [ -n "$email_address" ]; then
+        # Determine if backup was successful
+        # Rsync exit codes 0=success, 23=partial, 24=partial - both are acceptable
+        if [ "$exit_code" -eq 0 ] || [ "$exit_code" -eq 23 ] || [ "$exit_code" -eq 24 ]; then
+            local status="SUCCESS"
+            local color="$GREEN"
+        else
+            local status="FAILED"
+            local color="$RED"
+        fi
+        
+        local subject="Backup $status - $(hostname) - $(date '+%Y-%m-%d %H:%M:%S')"
+        local body="Backup $status on $(date)\n"
+        body+="Exit code: $exit_code\n"
+        body+="Backup file: $backup_file\n"
+        body+="Log file: $log_file\n\n"
+        body+="=== LAST 20 LINES OF LOG ===\n"
+        body+="$(tail -20 "$log_file" 2>/dev/null || echo 'Log file not available')\n"
+        
+        echo -e "$body" | mail -s "$subject" "$email_address"
+        
+        if [ $? -eq 0 ]; then
+            log_message "INFO" "Email report sent to $email_address - Status: $status"
+        else
+            log_message "ERROR" "Failed to send email to $email_address"
+        fi
+    fi
+}
+
+
 set -e
 
 # Configuration (can be overridden by environment variables)
@@ -313,6 +353,14 @@ log_message "SUCCESS" "Final backup: $BACKUP_FILE"
 log_message "SUCCESS" "Total duration: $((DURATION/60)) minutes"
 log_message "SUCCESS" "Log file: $LOG_FILE"
 log_message "SUCCESS" "========================================="
+
+
+
+# Send email report if email address is configured
+send_email_report "$EMAIL_REPORT" "$LOG_FILE" "$BACKUP_FILE" "$RSYNC_EXIT"
+
+
+
 
 # Exit with appropriate code
 exit $RSYNC_EXIT
